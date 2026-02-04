@@ -223,13 +223,6 @@ class HeadlessIda:
             + os.environ.get("PYTHONPATH", "")
         )
 
-        # TODO: should we use a random port?
-        # TODO: Potential race condition.
-        # port = 8000
-        # with socket.socket() as s:
-        #     s.bind(("", 0))
-        #     port = s.getsockname()[1]
-
         with PortAllocLock:
             if port is None:
                 port = find_free_port()
