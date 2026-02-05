@@ -14,6 +14,7 @@ from pathlib import Path
 import inspect
 import random
 import textwrap
+import time
 import types
 
 import rpyc
@@ -251,70 +252,94 @@ class HeadlessIda:
             + os.environ.get("PYTHONPATH", "")
         )
 
-        with PortAllocLock:
-            if port is None:
-                port = find_free_port()
-
-            if Path(binary_path).suffix in [".i64", ".idb"]:
-                tempidb = tempfile.NamedTemporaryFile(suffix=Path(binary_path).suffix)
-                with open(binary_path, "rb") as f:
-                    tempidb.write(f.read())
-                tempidb.flush()
-                binary_path = tempidb.name
-                command = f'"{idat_path}" -A -S"{escape_path(server_path)} {port}" -P+'
-                if ftype is not None:
-                    command += f' -T "{ftype}"'
-                if processor is not None:
-                    command += f' -p{processor}'
-                command += f' "{binary_path}"'
+        # --- Port-independent setup (done once) ---
+        is_idb_input = Path(binary_path).suffix in [".i64", ".idb"]
+        if is_idb_input:
+            tempidb = tempfile.NamedTemporaryFile(suffix=Path(binary_path).suffix)
+            with open(binary_path, "rb") as f:
+                tempidb.write(f.read())
+            tempidb.flush()
+            binary_path = tempidb.name
+        else:
+            if idb_path is not None:
+                idb_path = Path(idb_path)
+                if not idb_path.parent.is_dir():
+                    try:
+                        idb_path.parent.mkdir(parents=True, exist_ok=True)
+                    except OSError:
+                        raise ValueError(f"Failed to create directory for IDB path: {idb_path.parent}")
+                output_path = str(idb_path)
             else:
-                if idb_path is not None:
-                    idb_path = Path(idb_path)
-                    if not idb_path.parent.is_dir():
-                        try:
-                            idb_path.parent.mkdir(parents=True, exist_ok=True)
-                        except OSError:
-                            raise ValueError(f"Failed to create directory for IDB path: {idb_path.parent}")
-                    output_path = str(idb_path)
-                    command = f'"{idat_path}" -o"{output_path}" -A -S"{escape_path(server_with_db_path)} {port}"'
-                else:
-                    tempdir = tempfile.mkdtemp()
-                    output_path = os.path.join(tempdir, "database")
-                    command = f'"{idat_path}" -o"{output_path}" -A -S"{escape_path(server_path)} {port}"'
-                    
-                if ftype is not None:
-                    command += f' -T "{ftype}"'
-                if processor is not None:
-                    command += f' -p{processor}'
-                command += f' "{binary_path}"'
-
+                tempdir = tempfile.mkdtemp()
+                output_path = os.path.join(tempdir, "database")
             self.idb_path = output_path
-            # Launch IDA process
-            self.proc = subprocess.Popen(
-                command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
 
-        while True:
-            poll_code = self.proc.poll()
-            if poll_code is not None:
-                raise Exception(
-                    f"IDA failed to start: return code {poll_code}\n"
-                    f"Command: {command}\n"
-                    f"=============== STDOUT ===============\n{self.proc.stdout.read().decode() if self.proc.stdout else ''}\n"
-                    f"=============== STDERR ===============\n{self.proc.stderr.read().decode() if self.proc.stderr else ''}\n"
+        # --- Retry loop: allocate port, launch IDA, connect ---
+        # If an external process steals the ephemeral port between find_free_port()
+        # and IDA binding to it, we retry with a new port and jittered backoff.
+        user_port = port
+        # If `port` is specified, we only try once since.
+        max_retries = 1 if user_port is not None else 5 
+        for attempt in range(max_retries):
+            self.conn = None
+
+            with PortAllocLock:
+                port = user_port if user_port is not None else find_free_port()
+
+                if is_idb_input:
+                    command = f'"{idat_path}" -A -S"{escape_path(server_path)} {port}" -P+'
+                    if ftype is not None:
+                        command += f' -T "{ftype}"'
+                    if processor is not None:
+                        command += f' -p{processor}'
+                    command += f' "{binary_path}"'
+                else:
+                    if idb_path is not None:
+                        command = f'"{idat_path}" -o"{output_path}" -A -S"{escape_path(server_with_db_path)} {port}"'
+                    else:
+                        command = f'"{idat_path}" -o"{output_path}" -A -S"{escape_path(server_path)} {port}"'
+                    if ftype is not None:
+                        command += f' -T "{ftype}"'
+                    if processor is not None:
+                        command += f' -p{processor}'
+                    command += f' "{binary_path}"'
+
+                self.proc = subprocess.Popen(
+                    command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
                 )
-            try:
-                self.conn = rpyc.connect(
-                    "localhost",
-                    port,
-                    service=ForwardIO,  # type: ignore
-                    config={"sync_request_timeout": 60 * 60 * 24},
-                )
-            except Exception:
-                # Failed to connect to IDA server. 
-                self.conn = None
-                continue
-            break
+
+            # Wait for IDA to start its rpyc server
+            while True:
+                poll_code = self.proc.poll()
+                if poll_code is not None:
+                    # IDA exited prematurely (port may have been stolen)
+                    break
+                try:
+                    self.conn = rpyc.connect(
+                        "localhost",
+                        port,
+                        service=ForwardIO,  # type: ignore
+                        config={"sync_request_timeout": 60 * 60 * 24},
+                    )
+                except Exception:
+                    self.conn = None
+                    continue
+                break
+
+            if self.conn is not None:
+                break
+
+            # Jittered exponential backoff before retrying
+            if attempt < max_retries - 1:
+                time.sleep(random.uniform(0, min(1.0, 0.1 * (2 ** attempt))))
+
+        if self.conn is None:
+            raise Exception(
+                f"IDA failed to start after {max_retries} attempt(s): return code {self.proc.poll()}\n"
+                f"Command: {command}\n"
+                f"=============== STDOUT ===============\n{self.proc.stdout.read().decode() if self.proc.stdout else ''}\n"
+                f"=============== STDERR ===============\n{self.proc.stderr.read().decode() if self.proc.stderr else ''}\n"
+            )
 
         if override_import:
             self.override_import()

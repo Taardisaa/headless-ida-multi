@@ -2,6 +2,7 @@ import ctypes
 import os
 import platform
 import sys
+import tempfile
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional, Tuple, Union, Dict, Any, List
@@ -32,8 +33,40 @@ class ForwardIO(rpyc.Service):
         print(data, end="", file=sys.stderr)
 
 
-# Port allocation lock to ensure thread-safe port finding
-PortAllocLock = threading.Lock()
+class _PortAllocFileLock:
+    """Cross-process lock for port allocation using file locking.
+
+    Uses fcntl.flock (Unix) or msvcrt.locking (Windows) to serialize port
+    allocation across both threads and processes on the same machine.
+    Each __enter__ opens a fresh fd (stored per-thread via thread-local storage),
+    so concurrent threads within the same process are also properly serialized.
+    """
+    _LOCK_PATH = os.path.join(tempfile.gettempdir(), ".headless_ida_port.lock")
+    _local = threading.local()
+
+    def __enter__(self):
+        f = open(self._LOCK_PATH, "w")
+        self._local.lock_file = f
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *args):
+        f = self._local.lock_file
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+
+PortAllocLock = _PortAllocFileLock()
 
 def find_free_port() -> int:
     """
