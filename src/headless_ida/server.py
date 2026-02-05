@@ -135,14 +135,14 @@ def HeadlessIdaServer(idat_path):
                     raise Exception(
                         f"IDA failed to start: return code {p.poll()}\n"
                         f"Command: {command}\n"
-                        f"=============== STDOUT ===============\n{p.stdout.read().decode()}"
-                        f"=============== STDERR ===============\n{p.stderr.read().decode()}"
+                        f"=============== STDOUT ===============\n{p.stdout.read().decode() if p.stdout else ''}\n"
+                        f"=============== STDERR ===============\n{p.stderr.read().decode() if p.stderr else ''}"
                     )
                 try:
                     self.conn = rpyc.connect(
                         "localhost",
                         port,
-                        service=ForwardIO,
+                        service=ForwardIO,  # type: ignore[arg-type]
                         config={"sync_request_timeout": 60 * 60 * 24},
                     )
                 except:

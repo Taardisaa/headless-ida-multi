@@ -85,6 +85,7 @@ class HeadlessIda:
         bits: int = 64,
         ftype: Optional[str] = None,
         processor: Optional[str] = None,
+        idb_path: Optional[Union[str, Path]] = None,
     ) -> None:
         """
         Initialize a HeadlessIda instance.
@@ -97,6 +98,8 @@ class HeadlessIda:
             bits (int, optional): Bitness of IDA Pro (32 or 64). Defaults to 64.
             ftype (Optional[str], optional): File type prefix for interpreting the input file. Defaults to None.
             processor (Optional[str], optional): Processor type. Defaults to None.
+            idb_path (Optional[Union[str, Path]], optional): Path to store the IDA database (.idb/.i64).
+                If None, uses a temporary directory. Defaults to None.
         """
         self.backend_type, self.ida_path = resolve_ida_path(ida_dir, bits)
         self.cleaned_up: bool = False
@@ -104,20 +107,23 @@ class HeadlessIda:
         # TODO: can refactor into __enter__/__exit__ for context manager support
         atexit.register(self.clean_up)
 
+        self.idb_path = None
         self.conn = None
 
         if self.backend_type == IDABackendType.IDALIB:
             return self._idalib_backend(
-                self.ida_path, binary_path, override_import, ftype=ftype, processor=processor
+                self.ida_path, binary_path, override_import, ftype=ftype, processor=processor,
+                idb_path=idb_path
             )
         elif self.backend_type in [IDABackendType.IDA, IDABackendType.IDAT]:
             return self._ida_backend(
-                idat_path=self.ida_path, 
-                binary_path=binary_path, 
-                override_import=override_import, 
+                idat_path=self.ida_path,
+                binary_path=binary_path,
+                override_import=override_import,
                 port=port,
-                ftype=ftype, 
-                processor=processor
+                ftype=ftype,
+                processor=processor,
+                idb_path=idb_path
             )
 
     def _idalib_backend(
@@ -127,6 +133,7 @@ class HeadlessIda:
         override_import: bool = True,   # not used currently
         ftype: Optional[str] = None,
         processor: Optional[str] = None,
+        idb_path: Optional[Union[str, Path]] = None,
     ):
         """
         Initialize IDA using the idalib library.
@@ -137,6 +144,8 @@ class HeadlessIda:
             override_import (bool, optional): Not used currently. Defaults to True.
             ftype (Optional[str], optional): File type prefix for interpreting the input file. Defaults to None.
             processor (Optional[str], optional): Processor type. Defaults to None.
+            idb_path (Optional[Union[str, Path]], optional): Path to store the IDA database.
+                If None, uses a temporary directory. Defaults to None.
         """
         self.libida = ctypes.cdll.LoadLibrary(str(idalib_path))
         self.libida.init_library(0, None)
@@ -162,11 +171,24 @@ class HeadlessIda:
             )
             sys.path.insert(1, os.path.join(os.path.dirname(idalib_path), "python"))
 
-        # TODO: idalib doesn't support saving database to other location, so we need to copy the file manually
-        tempdir = tempfile.mkdtemp()
-        shutil.copy(binary_path, tempdir)
-        
-        target_file = os.path.join(tempdir, os.path.basename(binary_path))
+        # idalib creates the database next to the input file, so we copy the binary to the target location
+        if idb_path is not None:
+            idb_path = Path(idb_path)
+            try:
+                if not idb_path.parent.is_dir():
+                    idb_path.parent.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                raise ValueError(f"Failed to create directory for IDB path: {idb_path.parent}")
+            # IDA will create .i64/.idb next to the binary, so we use the idb_path stem as the binary name
+            target_file = str(idb_path.with_suffix(''))
+            shutil.copy(binary_path, target_file)
+            self.idb_path = str(idb_path)
+        else:
+            tempdir = tempfile.mkdtemp()
+            shutil.copy(binary_path, tempdir)
+            target_file = os.path.join(tempdir, os.path.basename(binary_path))
+            # NOTE: the exact suffix of the database depends on the binary type, we can't set it here
+            self.idb_path = None  # unknown at this point
 
         if major == 9 and minor == 0:
             self.libida.open_database(
@@ -194,17 +216,18 @@ class HeadlessIda:
                 )
 
     def _ida_backend(
-        self, 
+        self,
         idat_path: Union[str, Path],
         binary_path: Union[str, Path],
-        override_import: bool = True, 
+        override_import: bool = True,
         port: Optional[int] = None,
-        ftype: Optional[str] = None, 
-        processor: Optional[str] = None
+        ftype: Optional[str] = None,
+        processor: Optional[str] = None,
+        idb_path: Optional[Union[str, Path]] = None,
     ) -> None:
         """
         Initialize IDA using `idat`.
-        
+
         Args:
             idat_path (Union[str, Path]): Path to IDA Pro TUI executable.
             binary_path (Union[str, Path]): Path to the binary file to analyze.
@@ -212,9 +235,14 @@ class HeadlessIda:
             port (Optional[int], optional): Port number for the IDA server. Defaults to None.
             ftype (Optional[str], optional): File type prefix for interpreting the input file. Defaults to None.
             processor (Optional[str], optional): Processor type. Defaults to None.
+            idb_path (Optional[Union[str, Path]], optional): Path to store the IDA database (.idb/.i64).
+                If None, uses a temporary file. Defaults to None.
         """
         server_path = os.path.join(
             os.path.realpath(os.path.dirname(__file__)), "ida_script.py"
+        )
+        server_with_db_path = os.path.join(
+            os.path.realpath(os.path.dirname(__file__)), "ida_script_keep_db.py"
         )
 
         os.environ["PYTHONPATH"] = (
@@ -240,14 +268,27 @@ class HeadlessIda:
                     command += f' -p{processor}'
                 command += f' "{binary_path}"'
             else:
-                tempidb = tempfile.NamedTemporaryFile()
-                command = f'"{idat_path}" -o"{tempidb.name}" -A -S"{escape_path(server_path)} {port}"'
+                if idb_path is not None:
+                    idb_path = Path(idb_path)
+                    if not idb_path.parent.is_dir():
+                        try:
+                            idb_path.parent.mkdir(parents=True, exist_ok=True)
+                        except OSError:
+                            raise ValueError(f"Failed to create directory for IDB path: {idb_path.parent}")
+                    output_path = str(idb_path)
+                    command = f'"{idat_path}" -o"{output_path}" -A -S"{escape_path(server_with_db_path)} {port}"'
+                else:
+                    tempdir = tempfile.mkdtemp()
+                    output_path = os.path.join(tempdir, "database")
+                    command = f'"{idat_path}" -o"{output_path}" -A -S"{escape_path(server_path)} {port}"'
+                    
                 if ftype is not None:
                     command += f' -T "{ftype}"'
                 if processor is not None:
                     command += f' -p{processor}'
                 command += f' "{binary_path}"'
-            
+
+            self.idb_path = output_path
             # Launch IDA process
             self.proc = subprocess.Popen(
                 command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -325,13 +366,13 @@ class HeadlessIda:
         else:
             raise RuntimeError("No IDA backend initialized")
 
-    def clean_up(self):
+    def clean_up(self, timeout: int = 10):
         """
         Clean up resources by closing the IDA database and connection.
-        
+
         This method ensures that the IDA library database and network connection
         are properly closed. It uses a flag to prevent multiple cleanup attempts.
-        
+
         If cleanup has already been performed, this method returns early.
         Otherwise, it closes the libida database (if available) and the connection
         (if available) before setting the cleaned_up flag to True.
@@ -340,9 +381,11 @@ class HeadlessIda:
             return
         if hasattr(self, "libida"):
             self.libida.close_database(True)
-        # if hasattr(self, "conn"):
         if self.conn:
             self.conn.close()
+        # Wait for IDA process to fully exit (ensures database is saved)
+        if hasattr(self, "proc"):
+            self.proc.wait(timeout=timeout)
         self.cleaned_up = True
 
     def remote_import(self, module_name: str):

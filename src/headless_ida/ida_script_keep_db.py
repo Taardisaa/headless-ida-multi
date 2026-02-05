@@ -1,3 +1,7 @@
+"""
+A copy of ida_script.py that keeps the database on exit.
+"""
+
 import rpyc
 import importlib
 import ida_auto # type: ignore
@@ -37,8 +41,9 @@ class HeadlessIda(rpyc.Service):
         ida_auto.auto_wait()
 
     def on_connect(self, conn):
-        # With this flag set, IDA will delete the .idb or .i64 database file upon exit
-        ida_loader.set_database_flag(ida_loader.DBFL_KILL)
+        # Note: DBFL_KILL is not set, so the database is preserved on exit.
+        # Cleanup of temp databases is handled by the client.
+        # ida_loader.set_database_flags(ida_loader.DBFL_KILL)
         sys.stdout.write = conn.root.stdout_write
         sys.stderr.write = conn.root.stderr_write
 
