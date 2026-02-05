@@ -8,8 +8,13 @@
 [![License](https://img.shields.io/github/license/DennyDai/headless-ida.svg)](https://github.com/DennyDai/headless-ida/blob/main/LICENSE)
 
 # Install
+
+NOTE: This is a modified version of Headless IDA. For official version, please see [here](https://github.com/DennyDai/headless-ida).
+
+To install this modified package, run:
+
 ```bash
-pip install headless-ida
+pip install git+https://github.com/Taardisaa/headless-ida.git
 ```
 
 # Usage
@@ -18,6 +23,9 @@ pip install headless-ida
 > Headless IDA supports the latest [idalib](https://docs.hex-rays.com/user-guide/idalib). Just provide the idalib path instead of idat64 to use it as the backend.
 
 ### Use it as a normal Python module.
+
+NOTE: This works only when there is only **one** HeadlessIda instance in the process. For multiple instances, this will probably break. To isolate interactions with different instances, please use the Remote Exec/Eval/Remoteify features described later.
+
 ```python
 # Initialize HeadlessIda
 from headless_ida import HeadlessIda
@@ -33,6 +41,24 @@ import ida_name
 # Have Fun
 for func in idautils.Functions():
     print(f"{hex(func)} {ida_name.get_ea_name(func)}")
+```
+
+### Persist the IDA Database
+
+By default, Headless IDA uses a temporary database that is deleted when the session ends. To save the database to a specific location, use the `idb_path` parameter:
+
+```python
+from headless_ida import HeadlessIda
+
+# Save the database to a custom location
+headlessida = HeadlessIda(
+    "/path/to/idat64",
+    "/path/to/binary",
+    idb_path="/path/to/output.i64"
+)
+
+# The database will be saved to /path/to/output.i64 when clean_up() is called
+# Parent directories are created automatically if they don't exist
 ```
 
 ### Use it as a command line tool.
@@ -95,9 +121,11 @@ if remote_fn := headless_ida.remoteify(ida_remote_get_all_func_names):
 
 ### Support for multiple headless-ida instances
 
-In the original design, the server always bound to the default port 8000. With our updated approach, the system can intelligently allocate available ports, allowing multiple headless IDA instances to run concurrently.
+This modified version supports running multiple HeadlessIda instances simultaneously by allocating separate RPyC connections for each instance. 
 
 **However, this enhancement imposes a constraint: direct use of IDA APIs is no longer feasible. All interactions must be performed via `remoteify` or `remote_*` calls to prevent cross-instance conflicts.**
+
+> Potential Issue: Currently, there is also a potential issue with race conditions. While we use locks to prevent multiple HeadlessIda instances from allocating on the same port, there is still a small chance of port conflicts if **some other external process** occupies the port between the time we check for availability and the time we bind to it. However, such cases are rare in practice.
 
 ```python
 headless_ida = HeadlessIda(ida_dir=ida_dir_path, binary_path=bin_path)
