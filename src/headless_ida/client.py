@@ -87,6 +87,7 @@ class HeadlessIda:
         ftype: Optional[str] = None,
         processor: Optional[str] = None,
         idb_path: Optional[Union[str, Path]] = None,
+        use_tmp: bool = False,
     ) -> None:
         """
         Initialize a HeadlessIda instance.
@@ -101,6 +102,9 @@ class HeadlessIda:
             processor (Optional[str], optional): Processor type. Defaults to None.
             idb_path (Optional[Union[str, Path]], optional): Path to store the IDA database (.idb/.i64).
                 If None, uses a temporary directory. Defaults to None.
+            use_tmp (bool, optional): Whether to use a temporary directory for IDA processing before
+                moving the result to the final idb_path. Recommended when idb_path is on a different
+                filesystem (e.g., NTFS mount). Only effective when idb_path is set. Defaults to False.
         """
         self.backend_type, self.ida_path = resolve_ida_path(ida_dir, bits)
         self.cleaned_up: bool = False
@@ -110,11 +114,13 @@ class HeadlessIda:
 
         self.idb_path = None
         self.conn = None
+        self._final_idb_path = None
+        self._temp_dir = None
 
         if self.backend_type == IDABackendType.IDALIB:
             return self._idalib_backend(
                 self.ida_path, binary_path, override_import, ftype=ftype, processor=processor,
-                idb_path=idb_path
+                idb_path=idb_path, use_tmp=use_tmp
             )
         elif self.backend_type in [IDABackendType.IDA, IDABackendType.IDAT]:
             return self._ida_backend(
@@ -124,7 +130,8 @@ class HeadlessIda:
                 port=port,
                 ftype=ftype,
                 processor=processor,
-                idb_path=idb_path
+                idb_path=idb_path,
+                use_tmp=use_tmp
             )
 
     def _idalib_backend(
@@ -135,6 +142,7 @@ class HeadlessIda:
         ftype: Optional[str] = None,
         processor: Optional[str] = None,
         idb_path: Optional[Union[str, Path]] = None,
+        use_tmp: bool = False,
     ):
         """
         Initialize IDA using the idalib library.
@@ -147,6 +155,8 @@ class HeadlessIda:
             processor (Optional[str], optional): Processor type. Defaults to None.
             idb_path (Optional[Union[str, Path]], optional): Path to store the IDA database.
                 If None, uses a temporary directory. Defaults to None.
+            use_tmp (bool, optional): Whether to use a temporary directory for processing.
+                Defaults to False.
         """
         self.libida = ctypes.cdll.LoadLibrary(str(idalib_path))
         self.libida.init_library(0, None)
@@ -175,15 +185,22 @@ class HeadlessIda:
         # idalib creates the database next to the input file, so we copy the binary to the target location
         if idb_path is not None:
             idb_path = Path(idb_path)
-            try:
-                if not idb_path.parent.is_dir():
-                    idb_path.parent.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                raise ValueError(f"Failed to create directory for IDB path: {idb_path.parent}")
-            # IDA will create .i64/.idb next to the binary, so we use the idb_path stem as the binary name
-            target_file = str(idb_path.with_suffix(''))
-            shutil.copy(binary_path, target_file)
-            self.idb_path = str(idb_path)
+            if use_tmp:
+                self._final_idb_path = idb_path.resolve()
+                self._temp_dir = Path(tempfile.mkdtemp(prefix="headless_ida_"))
+                target_file = str(self._temp_dir / idb_path.stem)
+                shutil.copy(binary_path, target_file)
+                self.idb_path = str(self._temp_dir / idb_path.name)
+            else:
+                try:
+                    if not idb_path.parent.is_dir():
+                        idb_path.parent.mkdir(parents=True, exist_ok=True)
+                except OSError:
+                    raise ValueError(f"Failed to create directory for IDB path: {idb_path.parent}")
+                # IDA will create .i64/.idb next to the binary, so we use the idb_path stem as the binary name
+                target_file = str(idb_path.with_suffix(''))
+                shutil.copy(binary_path, target_file)
+                self.idb_path = str(idb_path)
         else:
             tempdir = tempfile.mkdtemp()
             shutil.copy(binary_path, tempdir)
@@ -225,6 +242,7 @@ class HeadlessIda:
         ftype: Optional[str] = None,
         processor: Optional[str] = None,
         idb_path: Optional[Union[str, Path]] = None,
+        use_tmp: bool = False,
     ) -> None:
         """
         Initialize IDA using `idat`.
@@ -238,6 +256,8 @@ class HeadlessIda:
             processor (Optional[str], optional): Processor type. Defaults to None.
             idb_path (Optional[Union[str, Path]], optional): Path to store the IDA database (.idb/.i64).
                 If None, uses a temporary file. Defaults to None.
+            use_tmp (bool, optional): Whether to use a temporary directory for processing.
+                Defaults to False.
         """
         server_path = os.path.join(
             os.path.realpath(os.path.dirname(__file__)), "ida_script.py"
@@ -263,12 +283,17 @@ class HeadlessIda:
         else:
             if idb_path is not None:
                 idb_path = Path(idb_path)
-                if not idb_path.parent.is_dir():
-                    try:
-                        idb_path.parent.mkdir(parents=True, exist_ok=True)
-                    except OSError:
-                        raise ValueError(f"Failed to create directory for IDB path: {idb_path.parent}")
-                output_path = str(idb_path)
+                if use_tmp:
+                    self._final_idb_path = idb_path.resolve()
+                    self._temp_dir = Path(tempfile.mkdtemp(prefix="headless_ida_"))
+                    output_path = str(self._temp_dir / idb_path.name)
+                else:
+                    if not idb_path.parent.is_dir():
+                        try:
+                            idb_path.parent.mkdir(parents=True, exist_ok=True)
+                        except OSError:
+                            raise ValueError(f"Failed to create directory for IDB path: {idb_path.parent}")
+                    output_path = str(idb_path)
             else:
                 tempdir = tempfile.mkdtemp()
                 output_path = os.path.join(tempdir, "database")
@@ -411,7 +436,28 @@ class HeadlessIda:
         # Wait for IDA process to fully exit (ensures database is saved)
         if hasattr(self, "proc"):
             self.proc.wait(timeout=timeout)
+        # Move IDB from temp to final destination if use_tmp was enabled
+        self._move_to_final_destination()
         self.cleaned_up = True
+
+    def _move_to_final_destination(self):
+        """Move IDB from temp directory to the final idb_path after IDA exits."""
+        # These attributes are only set if use_tmp=True and idb_path is provided.
+        if getattr(self, '_final_idb_path', None) is None or \
+            getattr(self, '_temp_dir', None) is None:
+            return
+        self._final_idb_path.parent.mkdir(parents=True, exist_ok=True) # type: ignore
+        idb_stem = Path(self.idb_path)  # type: ignore
+        for suffix in (".i64", ".idb"):
+            temp_file = idb_stem.with_suffix(suffix)
+            if temp_file.is_file():
+                final_file = self._final_idb_path.with_suffix(suffix) # type: ignore
+                shutil.move(str(temp_file), str(final_file))
+                self.idb_path = str(final_file)
+                break
+        if self._temp_dir and self._temp_dir.is_dir():
+            shutil.rmtree(self._temp_dir, ignore_errors=True)
+        self._temp_dir = None
 
     def remote_import(self, module_name: str):
         if self.conn:
