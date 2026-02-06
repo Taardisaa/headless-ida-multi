@@ -61,6 +61,25 @@ headlessida = HeadlessIda(
 # Parent directories are created automatically if they don't exist
 ```
 
+### Load a Zipped IDA Database
+
+You can pass a zipped IDA database (`.idb.zip` or `.i64.zip`) directly as `binary_path`. The zip is extracted to a temporary directory, loaded, and cleaned up automatically on exit:
+
+```python
+from headless_ida import HeadlessIda
+
+headlessida = HeadlessIda(
+    "/path/to/idat64",
+    "/path/to/database.i64.zip"
+)
+
+# Use IDA as usual — the database is extracted and loaded transparently
+import idautils
+print(list(idautils.Functions())[0:10])
+
+# Temp directory is cleaned up when clean_up() is called or on exit
+```
+
 ### Use it as a command line tool.
 ```bash
 # Interactive Console

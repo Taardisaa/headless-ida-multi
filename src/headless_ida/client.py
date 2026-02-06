@@ -16,6 +16,7 @@ import random
 import textwrap
 import time
 import types
+import zipfile
 
 import rpyc
 
@@ -116,6 +117,8 @@ class HeadlessIda:
         self.conn = None
         self._final_idb_path = None
         self._temp_dir = None
+        self._zip_temp_dir = None
+        binary_path = self._extract_zipped_idb(binary_path)
 
         if self.backend_type == IDABackendType.IDALIB:
             return self._idalib_backend(
@@ -133,6 +136,24 @@ class HeadlessIda:
                 idb_path=idb_path,
                 use_tmp=use_tmp
             )
+
+    def _extract_zipped_idb(self, binary_path: Union[str, Path]) -> Union[str, Path]:
+        """Extract a zipped IDA database (.idb.zip / .i64.zip) to a temp directory.
+
+        Returns the path to the extracted IDB file, or the original binary_path unchanged
+        if it is not a zipped IDB.
+        """
+        p = Path(binary_path)
+        if p.suffixes[-2:] not in [[".idb", ".zip"], [".i64", ".zip"]]:
+            return binary_path
+        self._zip_temp_dir = Path(tempfile.mkdtemp(prefix="headless_ida_zip_"))
+        with zipfile.ZipFile(p, "r") as zf:
+            zf.extractall(self._zip_temp_dir)
+        # Find the IDB file inside the extracted contents
+        idb_files = list(self._zip_temp_dir.rglob("*.idb")) + list(self._zip_temp_dir.rglob("*.i64"))
+        if not idb_files:
+            raise ValueError(f"No .idb or .i64 file found in {binary_path}")
+        return str(idb_files[0])
 
     def _idalib_backend(
         self,
@@ -438,6 +459,9 @@ class HeadlessIda:
             self.proc.wait(timeout=timeout)
         # Move IDB from temp to final destination if use_tmp was enabled
         self._move_to_final_destination()
+        # Clean up extracted zip temp directory
+        if self._zip_temp_dir and self._zip_temp_dir.is_dir():
+            shutil.rmtree(self._zip_temp_dir, ignore_errors=True)
         self.cleaned_up = True
 
     def _move_to_final_destination(self):
