@@ -3,12 +3,12 @@ requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "headless-ida"
+name = "headless-ida-multi"
 dependencies = [
     "rpyc",
 ]
 readme = "README.md"
-description = "Headless IDA"
+description = "Headless IDA with multi-instance support"
 authors = [
     {name = "Han Dai", email = "pypi@han.do"},
 ]
@@ -21,13 +21,13 @@ dynamic = ["version"]
 dev = ["pytest==9.0.2"]
 
 [project.scripts]
-headless-ida = "headless_ida:headlessida_cli"
-headless-ida-server = "headless_ida:headlessida_server_cli"
+headless-ida = "headless_ida_multi:headlessida_cli"
+headless-ida-server = "headless_ida_multi:headlessida_server_cli"
 
 [project.urls]
-homepage = "https://github.com/DennyDai/headless-ida"
-documentation = "https://github.com/DennyDai/headless-ida"
-repository = "https://github.com/DennyDai/headless-ida"
+homepage = "https://github.com/Taardisaa/headless-ida-multi"
+documentation = "https://github.com/Taardisaa/headless-ida-multi"
+repository = "https://github.com/Taardisaa/headless-ida-multi"
 
 [tool.setuptools.packages.find]
 where = ["src"]

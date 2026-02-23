@@ -1,20 +1,20 @@
 <p align="center">
   <img alt="Headless IDA" src="https://raw.githubusercontent.com/DennyDai/headless-ida/main/headless-ida.png" width="128">
 </p>
-<h1 align="center">Headless IDA</h1>
+<h1 align="center">Headless IDA Multi</h1>
 
-[![Latest Release](https://img.shields.io/pypi/v/headless-ida.svg)](https://pypi.python.org/pypi/headless-ida/)
-[![PyPI Statistics](https://img.shields.io/pypi/dm/headless-ida.svg)](https://pypistats.org/packages/headless-ida)
-[![License](https://img.shields.io/github/license/DennyDai/headless-ida.svg)](https://github.com/DennyDai/headless-ida/blob/main/LICENSE)
+[![Latest Release](https://img.shields.io/pypi/v/headless-ida-multi.svg)](https://pypi.python.org/pypi/headless-ida-multi/)
+[![PyPI Statistics](https://img.shields.io/pypi/dm/headless-ida-multi.svg)](https://pypistats.org/packages/headless-ida-multi)
+[![License](https://img.shields.io/github/license/Taardisaa/headless-ida-multi.svg)](https://github.com/Taardisaa/headless-ida-multi/blob/main/LICENSE)
 
 # Install
 
-NOTE: This is a modified version of Headless IDA. For official version, please see [here](https://github.com/DennyDai/headless-ida).
+NOTE: This is a modified version of [Headless IDA](https://github.com/DennyDai/headless-ida) with multi-instance support.
 
 To install this modified package, run:
 
 ```bash
-pip install git+https://github.com/Taardisaa/headless-ida.git
+pip install git+https://github.com/Taardisaa/headless-ida-multi.git
 ```
 
 # Usage
@@ -28,7 +28,7 @@ NOTE: This works only when there is only **one** HeadlessIda instance in the pro
 
 ```python
 # Initialize HeadlessIda
-from headless_ida import HeadlessIda
+from headless_ida_multi import HeadlessIda
 headlessida = HeadlessIda("/path/to/idat64", "/path/to/binary")
 
 # Import IDA Modules (make sure you have initialized HeadlessIda first)
@@ -36,7 +36,7 @@ import idautils
 import ida_name
 
 # Or Import All IDA Modules at Once (idaapi is not imported by default)
-# from headless_ida.ida_headers import *
+# from headless_ida_multi.ida_headers import *
 
 # Have Fun
 for func in idautils.Functions():
@@ -48,7 +48,7 @@ for func in idautils.Functions():
 By default, Headless IDA uses a temporary database that is deleted when the session ends. To save the database to a specific location, use the `idb_path` parameter:
 
 ```python
-from headless_ida import HeadlessIda
+from headless_ida_multi import HeadlessIda
 
 # Save the database to a custom location
 headlessida = HeadlessIda(
@@ -66,7 +66,7 @@ headlessida = HeadlessIda(
 You can pass a zipped IDA database (`.idb.zip` or `.i64.zip`) directly as `binary_path`. The zip is extracted to a temporary directory, loaded, and cleaned up automatically on exit:
 
 ```python
-from headless_ida import HeadlessIda
+from headless_ida_multi import HeadlessIda
 
 headlessida = HeadlessIda(
     "/path/to/idat64",
@@ -84,14 +84,14 @@ print(list(idautils.Functions())[0:10])
 ```bash
 # Interactive Console
 $ headless-ida /path/to/idat64 /path/to/binary
-Python 3.8.10 (default, Nov 14 2022, 12:59:47) 
+Python 3.8.10 (default, Nov 14 2022, 12:59:47)
 [GCC 9.4.0] on linux
 Type "help", "copyright", "credits" or "license" for more information.
 (InteractiveConsole)
 >>> import idautils
 >>> list(idautils.Functions())[0:10]
 [16384, 16416, 16432, 16448, 16464, 16480, 16496, 16512, 16528, 16544]
->>> 
+>>>
 
 
 # Run IDAPython Script
@@ -140,7 +140,7 @@ if remote_fn := headless_ida.remoteify(ida_remote_get_all_func_names):
 
 ### Support for multiple headless-ida instances
 
-This modified version supports running multiple HeadlessIda instances simultaneously by allocating separate RPyC connections for each instance. 
+This modified version supports running multiple HeadlessIda instances simultaneously by allocating separate RPyC connections for each instance.
 
 **However, this enhancement imposes a constraint: direct use of IDA APIs is no longer feasible. All interactions must be performed via `remoteify` or `remote_*` calls to prevent cross-instance conflicts.**
 
@@ -172,7 +172,7 @@ $ headless-ida-server /path/to/idat64 localhost 1337 &
 ### Connect to the server in Python script
 ```python
 # Initialize HeadlessIda
-from headless_ida import HeadlessIdaRemote
+from headless_ida_multi import HeadlessIdaRemote
 headlessida = HeadlessIdaRemote("localhost", 1337, "/path/to/local/binary")
 
 # Import IDA Modules (make sure you have initialized HeadlessIda first)
@@ -196,7 +196,7 @@ $ headless-ida localhost:1337 /path/to/local/binary -c "import idautils; print(l
 
 
 # Resources
-- [Headless IDA Examples](https://github.com/DennyDai/headless-ida/tree/main/examples)
+- [Headless IDA Examples](https://github.com/Taardisaa/headless-ida-multi/tree/main/examples)
 - [IDAPython Official Documentation](https://docs.hex-rays.com/developer-guide/idapython)
 - IDAPython Official Examples: [1](https://docs.hex-rays.com/developer-guide/idapython/idapython-examples), [2](https://github.com/idapython/src/tree/master/examples)
 # Known Issues

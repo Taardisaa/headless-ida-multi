@@ -5,14 +5,14 @@ import time
 import threading
 import unittest
 
-from headless_ida.helpers import find_free_port, PortAllocLock
+from headless_ida_multi.helpers import find_free_port, PortAllocLock
 
 
 # Top-level functions for multiprocessing (must be picklable)
 
 def _hold_lock_in_process(result_list, proc_id):
     """Acquire the lock, record enter/exit timestamps."""
-    from headless_ida.helpers import PortAllocLock
+    from headless_ida_multi.helpers import PortAllocLock
     import time
     with PortAllocLock:
         result_list.append(('enter', proc_id, time.monotonic()))
@@ -22,7 +22,7 @@ def _hold_lock_in_process(result_list, proc_id):
 
 def _allocate_port_in_process(port_list, error_list):
     """Allocate a port under the lock in a subprocess."""
-    from headless_ida.helpers import PortAllocLock, find_free_port
+    from headless_ida_multi.helpers import PortAllocLock, find_free_port
     import socket
     try:
         with PortAllocLock:
@@ -41,7 +41,7 @@ def _increment_shared_counter(counter, n_increments):
     Classic lock correctness test: without proper serialization,
     read-modify-write on the shared value loses increments.
     """
-    from headless_ida.helpers import PortAllocLock
+    from headless_ida_multi.helpers import PortAllocLock
     for _ in range(n_increments):
         with PortAllocLock:
             counter.value += 1
@@ -49,7 +49,7 @@ def _increment_shared_counter(counter, n_increments):
 
 def _allocate_ports_burst(port_list, error_list, n_ports):
     """Allocate multiple ports in rapid succession under the lock."""
-    from headless_ida.helpers import PortAllocLock, find_free_port
+    from headless_ida_multi.helpers import PortAllocLock, find_free_port
     import socket
     for _ in range(n_ports):
         try:

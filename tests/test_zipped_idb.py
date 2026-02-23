@@ -5,7 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from headless_ida.client import HeadlessIda
+from headless_ida_multi.client import HeadlessIda
 
 
 class _DummyIda:

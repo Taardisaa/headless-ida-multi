@@ -24,7 +24,7 @@ class TestIdbPath(unittest.TestCase):
 
     def test_idb_path_creates_database_at_specified_location(self):
         """Test that specifying idb_path creates the database at that location."""
-        from headless_ida import HeadlessIda
+        from headless_ida_multi import HeadlessIda
 
         with tempfile.TemporaryDirectory() as tmpdir:
             idb_path = Path(tmpdir) / "output.i64"
@@ -54,7 +54,7 @@ class TestIdbPath(unittest.TestCase):
 
     def test_idb_path_creates_nested_directories(self):
         """Test that idb_path creates parent directories if they don't exist."""
-        from headless_ida import HeadlessIda
+        from headless_ida_multi import HeadlessIda
 
         with tempfile.TemporaryDirectory() as tmpdir:
             idb_path = Path(tmpdir) / "subdir" / "nested" / "output.i64"

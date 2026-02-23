@@ -18,7 +18,7 @@ class TestRemoteEval(unittest.TestCase):
 
     def test_remote_eval_simple_expression(self):
         """Test remote_eval with a simple arithmetic expression."""
-        from headless_ida.client import HeadlessIda
+        from headless_ida_multi.client import HeadlessIda
 
         with patch.object(HeadlessIda, '__init__', lambda x, **kwargs: None):
             ida = HeadlessIda() # type: ignore
@@ -33,7 +33,7 @@ class TestRemoteEval(unittest.TestCase):
 
     def test_remote_eval_no_connection(self):
         """Test remote_eval raises error when no connection."""
-        from headless_ida.client import HeadlessIda
+        from headless_ida_multi.client import HeadlessIda
 
         with patch.object(HeadlessIda, '__init__', lambda x, **kwargs: None):
             ida = HeadlessIda() # type: ignore
@@ -56,7 +56,7 @@ class TestRemoteExec(unittest.TestCase):
 
     def test_remote_exec_simple_statement(self):
         """Test remote_exec with a simple statement."""
-        from headless_ida.client import HeadlessIda
+        from headless_ida_multi.client import HeadlessIda
 
         with patch.object(HeadlessIda, '__init__', lambda x, **kwargs: None):
             ida = HeadlessIda() # type: ignore
@@ -68,7 +68,7 @@ class TestRemoteExec(unittest.TestCase):
 
     def test_remote_exec_no_connection(self):
         """Test remote_exec raises error when no connection."""
-        from headless_ida.client import HeadlessIda
+        from headless_ida_multi.client import HeadlessIda
 
         with patch.object(HeadlessIda, '__init__', lambda x, **kwargs: None):
             ida = HeadlessIda() # type: ignore
@@ -91,7 +91,7 @@ class TestRemoteImport(unittest.TestCase):
 
     def test_remote_import_module(self):
         """Test remote_import imports a module."""
-        from headless_ida.client import HeadlessIda
+        from headless_ida_multi.client import HeadlessIda
 
         with patch.object(HeadlessIda, '__init__', lambda x, **kwargs: None):
             ida = HeadlessIda() # type: ignore
@@ -107,7 +107,7 @@ class TestRemoteImport(unittest.TestCase):
 
     def test_remote_import_no_connection(self):
         """Test remote_import raises error when no connection."""
-        from headless_ida.client import HeadlessIda
+        from headless_ida_multi.client import HeadlessIda
 
         with patch.object(HeadlessIda, '__init__', lambda x, **kwargs: None):
             ida = HeadlessIda() # type: ignore
@@ -130,7 +130,7 @@ class TestRemoteify(unittest.TestCase):
 
     def test_remoteify_function(self):
         """Test remoteify pushes a function to remote and returns handle."""
-        from headless_ida.client import HeadlessIda
+        from headless_ida_multi.client import HeadlessIda
 
         def sample_function():
             return 42
@@ -153,7 +153,7 @@ class TestRemoteify(unittest.TestCase):
 
     def test_remoteify_extracts_source(self):
         """Test remoteify correctly extracts function source."""
-        from headless_ida.client import HeadlessIda
+        from headless_ida_multi.client import HeadlessIda
 
         def my_test_func():
             x = 1

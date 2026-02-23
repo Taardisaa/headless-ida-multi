@@ -1,4 +1,4 @@
-from headless_ida import HeadlessIda
+from headless_ida_multi import HeadlessIda
 
 IDAT_PATH = "/path/to/idat64"
 
